@@ -35,5 +35,5 @@ jobs:
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository }}:latest
           echo IMAGE_ID=${IMAGE_ID}
-          docker websocketproxy ${IMAGE_ID}
+          docker tag websocketproxy ${IMAGE_ID}
           docker push ${IMAGE_ID}
