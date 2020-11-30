@@ -9,9 +9,6 @@ from select import POLLIN, POLLOUT, POLLHUP, POLLERR, POLLNVAL
 
 from pytun import TunTapDevice, IFF_TAP, IFF_NO_PI
 
-
-from limiter import RateLimitingState
-
 import tornado.ioloop
 import tornado.web
 import tornado.options
@@ -97,8 +94,6 @@ class MainHandler(websocket.WebSocketHandler):
         self.mac = ''
         self.allowance = RATE #unit: messages
         self.last_check = time.time() #floating-point, e.g. usec accuracy. Unit: seconds
-        self.upstream = RateLimitingState(RATE, name='upstream', clientip=self.remote_ip)
-        self.downstream = RateLimitingState(RATE, name='downstream', clientip=self.remote_ip)
 
         ping_future = delay_future(time.time()+PING_INTERVAL, self.do_ping)
         loop.add_future(ping_future, lambda: None)
@@ -113,8 +108,7 @@ class MainHandler(websocket.WebSocketHandler):
         pass
 
     def rate_limited_downstream(self, message):
-        if self.downstream.do_throttle(message):
-            self.write_message(message, binary=True)
+        self.write_message(message, binary=True)
 
     def open(self):
         self.set_nodelay(True)
@@ -136,23 +130,20 @@ class MainHandler(websocket.WebSocketHandler):
         dest = message[0:6]
         try:
             if dest == BROADCAST or (ord(dest[0]) & 0x1) == 1:
-                if self.upstream.do_throttle(message):
-                    for socket in macmap.values():
-                        try:
-                                socket.write_message(str(message),binary=True)
-                        except:
-                            pass
-
-                    tunthread.write(message)
-            elif macmap.get(dest, False):
-                if self.upstream.do_throttle(message):
+                for socket in macmap.values():
                     try:
-                        macmap[dest].write_message(str(message),binary=True)
+                            socket.write_message(str(message),binary=True)
                     except:
                         pass
+
+                tunthread.write(message)
+            elif macmap.get(dest, False):
+                try:
+                    macmap[dest].write_message(str(message),binary=True)
+                except:
+                    pass
             else:
-                if self.upstream.do_throttle(message):
-                    tunthread.write(message)
+                tunthread.write(message)
 
         except:
             tb = traceback.format_exc()
